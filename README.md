@@ -156,9 +156,42 @@ Reading, searching and deleting follow the same pattern: browser → API route �
 
 ## Deploy to AWS (CloudFormation)
 
-_To be completed._ The CloudFormation template will live in `scripts/`. It creates the VPC
-network and an EC2 instance, and its user data clones this repository, installs the
-requirements in a virtual environment and starts the app on port 8080.
+The app is deployed to the AWS Academy Sandbox with **Infrastructure as Code**:
+one CloudFormation template builds the whole environment, so it can be recreated
+the same way in every sandbox session.
+
+| File | Purpose |
+| ---- | ------- |
+| `scripts/lesson5.yaml` | Lab 2 environment (VPC + sample web app on port 80). Used to test the network setup. |
+| `scripts/simplenotes.yaml` | Same network, but the EC2 instance installs and runs SimpleNotes on port 8080. |
+
+**What `simplenotes.yaml` creates**
+
+- VPC `10.0.0.0/16` with 2 public and 2 private subnets in two Availability Zones
+- Internet Gateway, NAT Gateway and route tables
+- Security group allowing inbound TCP **8080**
+- One `t2.micro` EC2 instance (Amazon Linux 2023) in a public subnet, using the sandbox's
+  `LabInstanceProfile` (LabRole) so it can call AWS services without hard-coded keys. Its user data:
+  1. installs Git and Python 3.11
+  2. clones this repository
+  3. creates a virtual environment and runs `pip install -r requirements.txt`
+  4. starts the app as a systemd service on `0.0.0.0:8080`, so it also restarts automatically when the instance reboots
+
+**Steps**
+
+1. Start the Learner Lab and open the AWS Console (region **us-east-1**).
+2. Go to **CloudFormation → Create stack → With new resources → Upload a template file**
+   and choose `scripts/simplenotes.yaml`.
+3. Stack name: `simplenotes`. Keep the default parameters (`RepoUrl` points to this repo;
+   `AppPassword` is optional — if set, log in as `admin`).
+4. Wait for `CREATE_COMPLETE`, then wait another 3–5 minutes while the instance installs the app.
+5. Open the **Outputs** tab and click **AppURL** (`http://...:8080` — use http, not https).
+
+**Troubleshooting:** EC2 → select `SimpleNotes Server` → Actions → Monitor and troubleshoot →
+**Get system log** shows every step of the user data script.
+
+**Cost warning:** the NAT Gateway is billed every hour it exists. **Delete the stack at the end
+of every session.** Notes are stored on the instance disk, so they are deleted with the stack.
 
 ## Credits
 
