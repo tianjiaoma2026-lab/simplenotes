@@ -1,0 +1,270 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Lesson 6 Part 2B - Same network as Lab 2 (lesson5.yaml), but the EC2 instance
+  clones the SimpleNotes repo from GitHub and runs it on port 8080.
+  Only the security group port and the user data differ from lesson5.yaml.
+
+Parameters:
+  ImageId:
+    Type: AWS::EC2::Image::Id
+    Default: ami-0fef201115eefe936
+    Description: Amazon Linux 2023 AMI (us-east-1), as given in the lesson instructions
+  InstanceType:
+    Type: String
+    Default: t2.micro
+    Description: EC2 instance size (Lab 2 uses t2.micro)
+  RepoUrl:
+    Type: String
+    Default: https://github.com/tianjiaoma2026-lab/simplenotes.git
+    Description: Public GitHub repository to clone onto the EC2 instance
+  AppPassword:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: Optional login password for the app (leave empty for no login; username is admin)
+
+Resources:
+  # ------------------------------------------------------------------
+  # Task 1: VPC and Internet Gateway
+  # ------------------------------------------------------------------
+  LabVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: lab-vpc
+
+  LabInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: lab-igw
+
+  LabGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref LabVPC
+      InternetGatewayId: !Ref LabInternetGateway
+
+  # ------------------------------------------------------------------
+  # Task 1 + Task 2: Subnets in two Availability Zones
+  # Public subnets: 10.0.0.0/24 (AZ 1), 10.0.2.0/24 (AZ 2)
+  # Private subnets: 10.0.1.0/24 (AZ 1), 10.0.3.0/24 (AZ 2)
+  # ------------------------------------------------------------------
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref LabVPC
+      CidrBlock: 10.0.0.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: lab-subnet-public1
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref LabVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: lab-subnet-private1
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref LabVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: lab-subnet-public2
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref LabVPC
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: lab-subnet-private2
+
+  # ------------------------------------------------------------------
+  # Task 1: NAT Gateway (lets private subnets reach the internet)
+  # NOTE: a NAT Gateway is billed every hour it exists.
+  # Delete this stack at the end of every sandbox session.
+  # ------------------------------------------------------------------
+  NatElasticIP:
+    Type: AWS::EC2::EIP
+    DependsOn: LabGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: lab-nat-eip
+
+  LabNatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatElasticIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: lab-nat-public1
+
+  # ------------------------------------------------------------------
+  # Route tables
+  # Public:  0.0.0.0/0 -> Internet Gateway (this makes a subnet "public")
+  # Private: 0.0.0.0/0 -> NAT Gateway
+  # ------------------------------------------------------------------
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref LabVPC
+      Tags:
+        - Key: Name
+          Value: lab-rtb-public
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: LabGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref LabInternetGateway
+
+  PublicSubnet1RouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref LabVPC
+      Tags:
+        - Key: Name
+          Value: lab-rtb-private1
+
+  PrivateDefaultRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref LabNatGateway
+
+  PrivateSubnet1RouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnet2RouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  # ------------------------------------------------------------------
+  # Task 3: Security group (virtual firewall)
+  # CHANGED from 2A: open port 8080, because SimpleNotes runs on 8080
+  # ------------------------------------------------------------------
+  WebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: Web Security Group
+      GroupDescription: Enable access to SimpleNotes on port 8080
+      VpcId: !Ref LabVPC
+      SecurityGroupIngress:
+        - Description: Permit web requests to SimpleNotes
+          IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: Web Security Group
+
+  # ------------------------------------------------------------------
+  # Task 4: Web server in public subnet 2
+  # CHANGED from 2A: the user data installs and starts SimpleNotes
+  # (the same steps we run on our own laptop, done automatically at first boot)
+  # ------------------------------------------------------------------
+  WebServer1:
+    Type: AWS::EC2::Instance
+    DependsOn: PublicDefaultRoute
+    Properties:
+      ImageId: !Ref ImageId
+      InstanceType: !Ref InstanceType
+      NetworkInterfaces:
+        - DeviceIndex: "0"
+          SubnetId: !Ref PublicSubnet2
+          AssociatePublicIpAddress: true
+          GroupSet:
+            - !Ref WebSecurityGroup
+      Tags:
+        - Key: Name
+          Value: SimpleNotes Server
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          # Stop at the first error and print every command (visible in the system log)
+          set -ex
+
+          # 1. Install Git and Python 3.11
+          #    (Amazon Linux 2023 ships Python 3.9; our code needs 3.10+)
+          dnf install -y git python3.11 python3.11-pip
+
+          # 2. Clone our repository
+          git clone ${RepoUrl} /opt/simplenotes
+          cd /opt/simplenotes
+
+          # 3. Create a virtual environment and install the requirements
+          python3.11 -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r requirements.txt
+
+          # 4. Folder where notes are saved
+          mkdir -p /opt/simplenotes/data
+          chown -R ec2-user:ec2-user /opt/simplenotes
+
+          # 5. Run the app as a system service on 0.0.0.0:8080
+          #    User data only runs on the FIRST boot. A service starts the app
+          #    again automatically when the sandbox restarts the instance.
+          cat > /etc/systemd/system/simplenotes.service <<EOF
+          [Unit]
+          Description=SimpleNotes web app
+          After=network-online.target
+
+          [Service]
+          User=ec2-user
+          WorkingDirectory=/opt/simplenotes
+          Environment=NOTES_DIR=/opt/simplenotes/data
+          Environment=APP_PASSWORD=${AppPassword}
+          ExecStart=/opt/simplenotes/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8080
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+
+          systemctl daemon-reload
+          systemctl enable --now simplenotes
+
+Outputs:
+  AppURL:
+    Description: Open this in the browser (use http, not https)
+    Value: !Sub "http://${WebServer1.PublicDnsName}:8080"

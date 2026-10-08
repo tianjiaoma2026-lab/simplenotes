@@ -1,0 +1,224 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Lesson 6 Part 2A - Rebuild the Lab 2 environment (VPC, subnets, route tables,
+  NAT gateway, security group and web server) with CloudFormation in us-east-1.
+  Success = the Lab 2 web app opens in the browser.
+
+Parameters:
+  ImageId:
+    Type: AWS::EC2::Image::Id
+    Default: ami-0fef201115eefe936
+    Description: Amazon Linux 2023 AMI (us-east-1), as given in the lesson instructions
+  InstanceType:
+    Type: String
+    Default: t2.micro
+    Description: EC2 instance size (Lab 2 uses t2.micro)
+
+Resources:
+  # ------------------------------------------------------------------
+  # Task 1: VPC and Internet Gateway
+  # ------------------------------------------------------------------
+  LabVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: lab-vpc
+
+  LabInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: lab-igw
+
+  LabGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref LabVPC
+      InternetGatewayId: !Ref LabInternetGateway
+
+  # ------------------------------------------------------------------
+  # Task 1 + Task 2: Subnets in two Availability Zones
+  # Public subnets: 10.0.0.0/24 (AZ 1), 10.0.2.0/24 (AZ 2)
+  # Private subnets: 10.0.1.0/24 (AZ 1), 10.0.3.0/24 (AZ 2)
+  # ------------------------------------------------------------------
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref LabVPC
+      CidrBlock: 10.0.0.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: lab-subnet-public1
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref LabVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: lab-subnet-private1
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref LabVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: lab-subnet-public2
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref LabVPC
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: lab-subnet-private2
+
+  # ------------------------------------------------------------------
+  # Task 1: NAT Gateway (lets private subnets reach the internet)
+  # NOTE: a NAT Gateway is billed every hour it exists.
+  # Delete this stack at the end of every sandbox session.
+  # ------------------------------------------------------------------
+  NatElasticIP:
+    Type: AWS::EC2::EIP
+    DependsOn: LabGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: lab-nat-eip
+
+  LabNatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatElasticIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: lab-nat-public1
+
+  # ------------------------------------------------------------------
+  # Route tables
+  # Public:  0.0.0.0/0 -> Internet Gateway (this makes a subnet "public")
+  # Private: 0.0.0.0/0 -> NAT Gateway
+  # ------------------------------------------------------------------
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref LabVPC
+      Tags:
+        - Key: Name
+          Value: lab-rtb-public
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: LabGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref LabInternetGateway
+
+  PublicSubnet1RouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref LabVPC
+      Tags:
+        - Key: Name
+          Value: lab-rtb-private1
+
+  PrivateDefaultRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref LabNatGateway
+
+  PrivateSubnet1RouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnet2RouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  # ------------------------------------------------------------------
+  # Task 3: Security group (virtual firewall) - allow HTTP on port 80
+  # ------------------------------------------------------------------
+  WebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: Web Security Group
+      GroupDescription: Enable HTTP access
+      VpcId: !Ref LabVPC
+      SecurityGroupIngress:
+        - Description: Permit web requests
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: Web Security Group
+
+  # ------------------------------------------------------------------
+  # Task 4: Web server in public subnet 2, with the Lab 2 user data
+  # ------------------------------------------------------------------
+  WebServer1:
+    Type: AWS::EC2::Instance
+    DependsOn: PublicDefaultRoute
+    Properties:
+      ImageId: !Ref ImageId
+      InstanceType: !Ref InstanceType
+      NetworkInterfaces:
+        - DeviceIndex: "0"
+          SubnetId: !Ref PublicSubnet2
+          AssociatePublicIpAddress: true
+          GroupSet:
+            - !Ref WebSecurityGroup
+      Tags:
+        - Key: Name
+          Value: Web Server 1
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          # Install Apache Web Server and PHP
+          dnf install -y httpd wget php mariadb105-server
+          # Download Lab files
+          wget https://aws-tc-largeobjects.s3.us-west-2.amazonaws.com/CUR-TF-100-ACCLFO-2/2-lab2-vpc/s3/lab-app.zip
+          unzip lab-app.zip -d /var/www/html/
+          # Turn on web server
+          chkconfig httpd on
+          service httpd start
+
+Outputs:
+  WebsiteURL:
+    Description: Open this in the browser (use http, not https)
+    Value: !Sub "http://${WebServer1.PublicDnsName}"
