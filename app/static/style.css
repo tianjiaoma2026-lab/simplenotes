@@ -1,0 +1,292 @@
+:root {
+  --bg: #ffffff;
+  --panel: #f6f7f9;
+  --text: #1f2328;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --accent-text: #ffffff;
+  --danger: #dc2626;
+  --code-bg: #eef0f3;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181d;
+    --panel: #1e2128;
+    --text: #e5e7eb;
+    --muted: #9ca3af;
+    --border: #2d313a;
+    --accent: #3b82f6;
+    --code-bg: #262a33;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  height: 100vh;
+  font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+button.danger {
+  color: var(--danger);
+}
+
+/* ---------- Sidebar ---------- */
+
+#sidebar {
+  width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.brand {
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+#search {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+#tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag {
+  padding: 2px 8px;
+  font-size: 0.8rem;
+  border-radius: 999px;
+}
+
+.tag.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+#note-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+#note-list a {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  color: inherit;
+  text-decoration: none;
+}
+
+#note-list a:hover,
+#note-list li.active a {
+  background: var(--bg);
+}
+
+#note-list span,
+#note-list .none {
+  font-size: 0.8rem;
+  color: var(--muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Main ---------- */
+
+#main {
+  flex: 1;
+  min-width: 0;
+  padding: 24px 32px;
+  overflow-y: auto;
+}
+
+.empty {
+  margin-top: 20vh;
+  text-align: center;
+  color: var(--muted);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.toolbar h1 {
+  margin: 0;
+  font-size: 1.6rem;
+  overflow-wrap: anywhere;
+}
+
+.toolbar > div {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.meta {
+  margin: 4px 0 16px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+#edit-title {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 1.3rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.edit-panes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+  height: calc(100vh - 130px);
+}
+
+#edit-content {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font-family: ui-monospace, Consolas, monospace;
+  resize: none;
+}
+
+#edit-preview {
+  padding: 0 12px;
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+/* ---------- Markdown ---------- */
+
+.markdown {
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.markdown a {
+  color: var(--accent);
+}
+
+.markdown code {
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: var(--code-bg);
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+.markdown pre {
+  padding: 12px;
+  border-radius: 6px;
+  background: var(--code-bg);
+  overflow-x: auto;
+}
+
+.markdown pre code {
+  padding: 0;
+}
+
+.markdown blockquote {
+  margin: 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--border);
+  color: var(--muted);
+}
+
+.markdown img {
+  max-width: 100%;
+}
+
+#toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 6px;
+  background: var(--text);
+  color: var(--bg);
+}
+
+/* ---------- Mobile ---------- */
+
+@media (max-width: 720px) {
+  body {
+    flex-direction: column;
+    height: auto;
+  }
+
+  #sidebar {
+    width: 100%;
+    max-height: 45vh;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  #main {
+    padding: 16px;
+  }
+
+  .edit-panes {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  #edit-content {
+    height: 50vh;
+  }
+
+  #edit-preview {
+    border-left: none;
+  }
+}
