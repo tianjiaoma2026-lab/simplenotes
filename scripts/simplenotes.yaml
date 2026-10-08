@@ -209,6 +209,9 @@ Resources:
     Properties:
       ImageId: !Ref ImageId
       InstanceType: !Ref InstanceType
+      # Give the instance an identity (the sandbox's pre-built LabRole) so the
+      # app can call S3 / DynamoDB without any hard-coded access keys.
+      IamInstanceProfile: LabInstanceProfile
       NetworkInterfaces:
         - DeviceIndex: "0"
           SubnetId: !Ref PublicSubnet2
