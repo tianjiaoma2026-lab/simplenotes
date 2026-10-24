@@ -1,8 +1,9 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  Lesson 6 Part 2B - Same network as Lab 2 (lesson5.yaml), but the EC2 instance
-  clones the SimpleNotes repo from GitHub and runs it on port 8080.
-  Only the security group port and the user data differ from lesson5.yaml.
+  SimpleNotes on AWS: the Lab 2 network (VPC, public and private subnets,
+  internet gateway, NAT), an EC2 web server that clones SimpleNotes from GitHub
+  and runs it on port 8080, and an RDS MySQL database in the private subnets
+  for note metadata (F5).
 
 Parameters:
   ImageId:
@@ -22,6 +23,14 @@ Parameters:
     Default: ""
     NoEcho: true
     Description: Optional login password for the app (leave empty for no login; username is admin)
+  DBPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    MaxLength: 41
+    AllowedPattern: "[A-Za-z0-9]+"
+    ConstraintDescription: 8 to 41 letters or digits (no spaces or symbols)
+    Description: Password for the RDS MySQL database (8+ letters or digits, not a password you use elsewhere)
 
 Resources:
   # ------------------------------------------------------------------
@@ -199,13 +208,68 @@ Resources:
           Value: Web Security Group
 
   # ------------------------------------------------------------------
+  # F5 (Lesson 8): Amazon RDS for MySQL in the two private subnets.
+  # Like the Lesson 8 lab: the database is not public, and only the web
+  # server's security group may connect to it on port 3306.
+  # The table stores note metadata; the note files themselves stay on EBS.
+  # ------------------------------------------------------------------
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: DB Security Group
+      GroupDescription: Allow MySQL only from the SimpleNotes web server
+      VpcId: !Ref LabVPC
+      SecurityGroupIngress:
+        - Description: MySQL from the web server only
+          IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref WebSecurityGroup
+      Tags:
+        - Key: Name
+          Value: DB Security Group
+
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Private subnets in two Availability Zones for the SimpleNotes database
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+
+  NotesDatabase:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      DBInstanceIdentifier: simplenotes-db
+      Engine: mysql
+      DBInstanceClass: db.t3.micro
+      AllocatedStorage: "20"
+      DBName: simplenotes
+      MasterUsername: admin
+      MasterUserPassword: !Ref DBPassword
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref DBSecurityGroup
+      PubliclyAccessible: false
+      # Kept small and quick to create for the sandbox (as in the Lesson 8 lab):
+      # no Multi-AZ standby, no automatic backups, no enhanced monitoring.
+      MultiAZ: false
+      BackupRetentionPeriod: 0
+      MonitoringInterval: 0
+
+  # ------------------------------------------------------------------
   # Task 4: Web server in public subnet 2
   # CHANGED from 2A: the user data installs and starts SimpleNotes
   # (the same steps we run on our own laptop, done automatically at first boot)
   # ------------------------------------------------------------------
   WebServer1:
     Type: AWS::EC2::Instance
-    DependsOn: PublicDefaultRoute
+    # Wait for the database too, so its endpoint is known when User Data runs.
+    DependsOn:
+      - PublicDefaultRoute
+      - NotesDatabase
     Properties:
       ImageId: !Ref ImageId
       InstanceType: !Ref InstanceType
@@ -257,6 +321,10 @@ Resources:
           WorkingDirectory=/opt/simplenotes
           Environment=NOTES_DIR=/opt/simplenotes/data
           Environment=APP_PASSWORD=${AppPassword}
+          Environment=DB_HOST=${NotesDatabase.Endpoint.Address}
+          Environment=DB_NAME=simplenotes
+          Environment=DB_USER=admin
+          Environment=DB_PASSWORD=${DBPassword}
           ExecStart=/opt/simplenotes/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8080
           Restart=always
 
@@ -271,3 +339,6 @@ Outputs:
   AppURL:
     Description: Open this in the browser (use http, not https)
     Value: !Sub "http://${WebServer1.PublicDnsName}:8080"
+  DatabaseEndpoint:
+    Description: RDS MySQL endpoint (reachable only from the web server)
+    Value: !GetAtt NotesDatabase.Endpoint.Address
