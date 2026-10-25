@@ -566,5 +566,27 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+// Light / dark colours. Light (SMU white, blue and gold) is the default;
+// the choice is remembered in this browser.
+const showThemeLabel = () => {
+  const dark = document.documentElement.dataset.theme === "dark";
+  const label = dark ? "Light colours" : "Dark colours";
+  $("theme-btn").title = label;
+  $("theme-btn").setAttribute("aria-label", label);
+};
+
+$("theme-btn").onclick = () => {
+  const root = document.documentElement;
+  if (root.dataset.theme === "dark") delete root.dataset.theme;
+  else root.dataset.theme = "dark";
+  try {
+    localStorage.setItem("theme", root.dataset.theme || "light");
+  } catch (e) {
+    // Storage can be blocked (private window); the switch still works for this visit.
+  }
+  showThemeLabel();
+};
+showThemeLabel();
+
 window.addEventListener("hashchange", route);
 route();

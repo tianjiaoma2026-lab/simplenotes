@@ -31,24 +31,24 @@
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* SMU Blue as the background; lighter blue and gold so they stay readable */
-    --paper: #0f1433;
-    --desk: #161c40;
-    --ink: #e9ebf4;
-    --ink-soft: #a4a9c4;
-    --rule: #2a3160;
-    --pen: #a9b8f0;
-    --pen-text: #0f1433;
-    --highlight: #c4a575;
-    --highlight-ink: #0f1433;
-    --swipe: rgb(196 165 117 / 0.35);
-    --danger: #ff8a7e;
-    --code-bg: #1b2248;
-    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 18px rgb(0 0 0 / 0.25);
-    color-scheme: dark;
-  }
+/* Light (white + SMU Blue + SMU Gold) is the default.
+   The Dark button in the sidebar switches to this dark navy version. */
+:root[data-theme="dark"] {
+  /* SMU Blue as the background; lighter blue and gold so they stay readable */
+  --paper: #0f1433;
+  --desk: #161c40;
+  --ink: #e9ebf4;
+  --ink-soft: #a4a9c4;
+  --rule: #2a3160;
+  --pen: #a9b8f0;
+  --pen-text: #0f1433;
+  --highlight: #c4a575;
+  --highlight-ink: #0f1433;
+  --swipe: rgb(196 165 117 / 0.35);
+  --danger: #ff8a7e;
+  --code-bg: #1b2248;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 18px rgb(0 0 0 / 0.25);
+  color-scheme: dark;
 }
 
 * {
@@ -248,6 +248,15 @@ kbd {
   font-weight: 500;
   text-decoration: none;
   transition: background 0.15s, color 0.15s;
+}
+
+button.nav-link {
+  flex: 0 0 auto;
+  padding: 6px 9px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
 }
 
 .nav-link:hover {
